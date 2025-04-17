@@ -1,7 +1,7 @@
 
 #Access Data from Excel sheet
 import pandas as pd
-Data=pd.read_csv(r'C:\Users\jakej\sample_project\Credit_Card_Default_Model\Credit Card Default Modeling Data-Use This.csv' ,low_memory=True)
+Data=pd.read_csv(r'Credit Card Default Modeling Data-Use This.csv' ,low_memory=True)
 Df=pd.DataFrame(data=Data)
 
 #check for null values in the dataset
