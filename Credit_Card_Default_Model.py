@@ -19,6 +19,17 @@ pf=pd.get_dummies(Df,columns=["X3","X4"],drop_first=True)
 
 pf.drop(columns=["ID"], inplace=True)
 
+#view heatmap of the data set
+import seaborn as sns
+import matplotlib.pyplot as plt
+import numpy as np
+
+plt.figure(figsize=(20,20))
+sns.heatmap(pf.corr(), annot=True, fmt=".2f", cmap="coolwarm", center=0, square=True, cbar_kws={"shrink": .8})
+plt.title("Correlation Heatmap")
+plt.show()
+
+
 #view class balance of y variable 
 print(sum(pf["Y"].value_counts()))
 
@@ -47,8 +58,26 @@ from sklearn.model_selection import GridSearchCV
 #model=GridSearchCV(KNeighborsClassifier(), params, cv=5, scoring='recall')
 model=RandomForestClassifier()
 model.fit(X_train, y_train)
-model.predict(X_test)
 predictions=model.predict(X_test)
+
+# Get feature importances
+importances = model.feature_importances_
+
+# Match them to feature names
+feature_importance_df = pd.DataFrame({
+    'Feature': X_train.columns,
+    'Importance': importances
+}).sort_values(by='Importance', ascending=False)
+
+# Display top features
+print(feature_importance_df.head(23))
+
+#visualize features
+plt.figure(figsize=(12, 6))
+sns.barplot(x='Importance', y='Feature', data=feature_importance_df.head(23))
+plt.title('Top 20 Feature Importances from Random Forest')
+plt.tight_layout()
+plt.show()
 
 #View initial results
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
