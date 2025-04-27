@@ -1,23 +1,34 @@
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 #Access Data from Excel sheet
 import pandas as pd
 Data=pd.read_csv(r'Credit Card Default Modeling Data-Use This.csv' ,low_memory=True)
-Df=pd.DataFrame(data=Data)
+Unprocessed_Df=pd.DataFrame(data=Data)
+logger.info("Data loaded successfully")
 
 #check for null values in the dataset
-print(Df.isnull().sum())
+logger.info("Checking for null values in the dataset")
+print(Unprocessed_Df.isnull().sum())
 
+logger.info("Processing the data")
 #convert necessary columns to proper data types
 numeric_columns=["X1","X5"]
 for i in range(12,24):
     numeric_columns.append("X"+str(i))
-Df[numeric_columns]=Df[numeric_columns].apply(pd.to_numeric, errors='coerce')
+Unprocessed_Df[numeric_columns]=Unprocessed_Df[numeric_columns].apply(pd.to_numeric, errors='coerce')
 
-X_columns=[column for column in Df.columns.values]
+X_columns=[column for column in Unprocessed_Df.columns.values]
 
-pf=pd.get_dummies(Df,columns=["X3","X4"],drop_first=True) 
+Processed_df=pd.get_dummies(Unprocessed_Df,columns=["X3","X4"],drop_first=True) 
 
-pf.drop(columns=["ID"], inplace=True)
+# shuffle the data set for splitting
+Processed_df = Processed_df.sample(frac=1, random_state=42)
+print(Processed_df.head())
+# pf.drop(columns=["ID"], inplace=True)
+
+
 
 #view heatmap of the data set
 import seaborn as sns
@@ -25,65 +36,116 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 plt.figure(figsize=(20,20))
-sns.heatmap(pf.corr(), annot=True, fmt=".2f", cmap="coolwarm", center=0, square=True, cbar_kws={"shrink": .8})
+sns.heatmap(Processed_df.corr(), annot=True, fmt=".2f", cmap="coolwarm", center=0, square=True, cbar_kws={"shrink": .8})
 plt.title("Correlation Heatmap")
 plt.show()
 
 
-#view class balance of y variable 
-print(sum(pf["Y"].value_counts()))
+logger.info("Resampling to deal with class imbalance")
 
 #balance data set to deal with class imbalance
 from imblearn.over_sampling import SMOTE
 smote = SMOTE(random_state=42)
-Features=pf.drop(columns=["Y"])
-Target=pf["Y"]
+Features=Processed_df.drop(columns=["Y"])
+Target=Processed_df["Y"]
 X_resampled, y_resampled = smote.fit_resample(Features, Target)
 
-
 #split columns into training and testing
+logger.info("Splitting the data into training, testing, and validation sets")
 from sklearn.model_selection import train_test_split
-X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled, test_size=0.2, random_state=42)  
+X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled, test_size=0.3, random_state=42)  
 
-#Standardize the data
-# from sklearn.preprocessing import StandardScaler
-# scaler = StandardScaler()
-# X_train_scaled = scaler.fit_transform(X_train)
-# X_test_scaled = scaler.transform(X_test)
+#split the test data into 2 sets for validation and testing
+X_test, X_val, y_test, y_val = train_test_split(X_test, y_test, test_size=0.5, random_state=42)
 
-# Train Model using KNN
+
+# Train Model using Random Forest Classifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import GridSearchCV
-#params = { 'n_neighbors':[5,6,7,8,9,10], 'weights':['uniform','distance'], 'metric':['euclidean','manhattan']}
-#model=GridSearchCV(KNeighborsClassifier(), params, cv=5, scoring='recall')
+logger.info("Training the Random Forest Classifier")
 model=RandomForestClassifier()
 model.fit(X_train, y_train)
-predictions=model.predict(X_test)
-
-# Get feature importances
-importances = model.feature_importances_
-
-# Match them to feature names
-feature_importance_df = pd.DataFrame({
-    'Feature': X_train.columns,
-    'Importance': importances
-}).sort_values(by='Importance', ascending=False)
-
-# Display top features
-print(feature_importance_df.head(23))
-
-#visualize features
-plt.figure(figsize=(12, 6))
-sns.barplot(x='Importance', y='Feature', data=feature_importance_df.head(23))
-plt.title('Top 20 Feature Importances from Random Forest')
-plt.tight_layout()
-plt.show()
+validation_predictions = model.predict(X_val)
+logger.info("Evaluating the model on validation data")
 
 #View initial results
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
-print("Accuracy:", accuracy_score(y_test, predictions))
-print("Confusion Matrix:\n", confusion_matrix(y_test, predictions))
-print("Classification Report:\n", classification_report(y_test, predictions))
+print("Accuracy:", accuracy_score(y_val, validation_predictions))
+print("Confusion Matrix:\n", confusion_matrix(y_val, validation_predictions))
+print("Classification Report:\n", classification_report(y_val, validation_predictions))
 
+from sklearn.metrics import PrecisionRecallDisplay
+from sklearn.metrics import precision_recall_curve
+y_probs = model.predict_proba(X_val)[:,1]  
+precision, recall, thresholds = precision_recall_curve(y_val, y_probs)
+#View thresholds
+Threshold_df=pd.DataFrame ({
+    "Thresholds":thresholds,
+    "Precision": precision[:-1],  
+    'Recall': recall[:-1]
+})
+
+#filter for precision values greater than 0.8
+Threshold_df=Threshold_df[Threshold_df["Precision"]>0.8]
+print(Threshold_df)
+
+PrecisionRecallDisplay.from_predictions(y_val, y_probs)
+plt.title('Precision-Recall Curve')
+plt.grid(True)
+plt.show()
+
+#plot ROC curve
+from sklearn.metrics import roc_curve, auc
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
+plt.figure(figsize=(10, 6))
+fpr, tpr, thresholds = roc_curve(y_val, y_probs)
+roc_auc = auc(fpr, tpr)
+plt.plot(fpr, tpr, color='blue', label='ROC curve (area = %0.2f)' % roc_auc)
+plt.plot([0, 1], [0, 1], color='red', linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver Operating Characteristic')
+plt.legend(loc='lower right')
+plt.show()
+
+# Predict probabilities
+y_probs_val = model.predict_proba(X_val)[:, 1]
+y_probs_test = model.predict_proba(X_test)[:, 1]
+
+# Apply threshold
+optimal_threshold = 0.42
+val_predictions = (y_probs_val >= optimal_threshold).astype(int)
+test_predictions = (y_probs_test >= optimal_threshold).astype(int)
+
+# Evaluate
+print("Validation Set Metrics:")
+print(confusion_matrix(y_val, val_predictions))
+print(classification_report(y_val, val_predictions))
+
+print("Test Set Metrics:")
+print(confusion_matrix(y_test, test_predictions))
+print(classification_report(y_test, test_predictions))
+
+# # Get feature importances
+# importances = model.feature_importances_
+
+# # Match them to feature names
+# feature_importance_df = pd.DataFrame({
+#     'Feature': X_train.columns,
+#     'Importance': importances
+# }).sort_values(by='Importance', ascending=False)
+
+# # Display top features
+# print(feature_importance_df.head(23))
+
+# #visualize features
+# plt.figure(figsize=(12, 6))
+# sns.barplot(x='Importance', y='Feature', data=feature_importance_df.head(23))
+# plt.title('Top Feature Importances from Random Forest')
+# plt.tight_layout()
+# plt.show()
 
 
