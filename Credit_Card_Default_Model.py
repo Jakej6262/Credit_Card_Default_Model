@@ -1,12 +1,30 @@
+#import necessary libraries
 import logging
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+from imblearn.over_sampling import SMOTE
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+from sklearn.metrics import PrecisionRecallDisplay
+from sklearn.metrics import precision_recall_curve
+from sklearn.metrics import roc_curve, auc
+import numpy as np
+
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-#Access Data from Excel sheet
-import pandas as pd
+#Access Data from csv file
 Data=pd.read_csv(r'Credit Card Default Modeling Data-Use This.csv' ,low_memory=True)
-Unprocessed_Df=pd.DataFrame(data=Data)
-logger.info("Data loaded successfully")
+
+try:
+    Unprocessed_Df=pd.DataFrame(data=Data)
+    logger.info("Data loaded successfully")
+except Exception as e:
+    logger.error(f"Error loading data: {e}")
+    raise
 
 #check for null values in the dataset
 logger.info("Checking for null values in the dataset")
@@ -29,12 +47,7 @@ print(Processed_df.head())
 # pf.drop(columns=["ID"], inplace=True)
 
 
-
 #view heatmap of the data set
-import seaborn as sns
-import matplotlib.pyplot as plt
-import numpy as np
-
 plt.figure(figsize=(20,20))
 sns.heatmap(Processed_df.corr(), annot=True, fmt=".2f", cmap="coolwarm", center=0, square=True, cbar_kws={"shrink": .8})
 plt.title("Correlation Heatmap")
@@ -44,7 +57,6 @@ plt.show()
 logger.info("Resampling to deal with class imbalance")
 
 #balance data set to deal with class imbalance
-from imblearn.over_sampling import SMOTE
 smote = SMOTE(random_state=42)
 Features=Processed_df.drop(columns=["Y"])
 Target=Processed_df["Y"]
@@ -52,7 +64,6 @@ X_resampled, y_resampled = smote.fit_resample(Features, Target)
 
 #split columns into training and testing
 logger.info("Splitting the data into training, testing, and validation sets")
-from sklearn.model_selection import train_test_split
 X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled, test_size=0.3, random_state=42)  
 
 #split the test data into 2 sets for validation and testing
@@ -60,7 +71,6 @@ X_test, X_val, y_test, y_val = train_test_split(X_test, y_test, test_size=0.5, r
 
 
 # Train Model using Random Forest Classifier
-from sklearn.ensemble import RandomForestClassifier
 logger.info("Training the Random Forest Classifier")
 model=RandomForestClassifier()
 model.fit(X_train, y_train)
@@ -68,13 +78,10 @@ validation_predictions = model.predict(X_val)
 logger.info("Evaluating the model on validation data")
 
 #View initial results
-from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 print("Accuracy:", accuracy_score(y_val, validation_predictions))
 print("Confusion Matrix:\n", confusion_matrix(y_val, validation_predictions))
 print("Classification Report:\n", classification_report(y_val, validation_predictions))
 
-from sklearn.metrics import PrecisionRecallDisplay
-from sklearn.metrics import precision_recall_curve
 y_probs = model.predict_proba(X_val)[:,1]  
 precision, recall, thresholds = precision_recall_curve(y_val, y_probs)
 #View thresholds
@@ -94,10 +101,6 @@ plt.grid(True)
 plt.show()
 
 #plot ROC curve
-from sklearn.metrics import roc_curve, auc
-import matplotlib.pyplot as plt
-import numpy as np
-import seaborn as sns
 plt.figure(figsize=(10, 6))
 fpr, tpr, thresholds = roc_curve(y_val, y_probs)
 roc_auc = auc(fpr, tpr)
@@ -116,7 +119,7 @@ y_probs_val = model.predict_proba(X_val)[:, 1]
 y_probs_test = model.predict_proba(X_test)[:, 1]
 
 # Apply threshold
-optimal_threshold = 0.42
+optimal_threshold = 0.41
 val_predictions = (y_probs_val >= optimal_threshold).astype(int)
 test_predictions = (y_probs_test >= optimal_threshold).astype(int)
 
